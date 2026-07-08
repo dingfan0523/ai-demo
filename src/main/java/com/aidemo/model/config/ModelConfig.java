@@ -1,12 +1,7 @@
 package com.aidemo.model.config;
 
-import com.aidemo.chat.core.ChatProvider;
-import com.aidemo.chat.provider.DeepSeekChatProvider;
-import com.aidemo.chat.provider.OpenAiChatProvider;
 import dev.langchain4j.http.client.HttpClientBuilder;
 import dev.langchain4j.http.client.jdk.JdkHttpClientBuilder;
-import dev.langchain4j.model.chat.ChatModel;
-import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import lombok.extern.slf4j.Slf4j;
@@ -20,89 +15,119 @@ import java.net.ProxySelector;
 import java.net.SocketAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
- * AI 模型配置类
+ * AI 模型 Bean 配置
  *
- * <p>为每个已配置的模型创建 ChatModel + StreamingChatModel，
- * 并根据 provider 名称选择合适的 ChatProvider 策略实现</p>
+ * <p>手动创建所有模型 Bean，不依赖 starter 自动配置。
+ * 主要通过 {@link OpenAiChatModel} 和 {@link OpenAiStreamingChatModel} 构建，
+ * 支持统一代理配置。</p>
+ *
+ * <h3>两种方案对比</h3>
+ * <pre>
+ * ┌─────────────────────┬──────────────────────────────────┬──────────────────────────────────────┐
+ * │                     │ 方案 A：Starter 自动配置           │ 方案 B：纯手工 @Bean ✅               │
+ * ├─────────────────────┼──────────────────────────────────┼──────────────────────────────────────┤
+ * │ ChatGPT 配置        │ application.yml + 零代码         │ 需要手写 OpenAiChatModel.builder()   │
+ * │                     │ （但需 Spring Boot 3.3+）        │ （兼容 Spring Boot 3.2）              │
+ * │ DeepSeek 配置       │ 需要手动 @Bean                   │ 全量手动 @Bean                       │
+ * │ 代理配置            │ RestClient.Builder 自定义         │ JdkHttpClientBuilder 代理            │
+ * │ 扩展新模型          │ 加 @Bean + @AiService            │ 加 @Bean + @AiService                │
+ * └─────────────────────┴──────────────────────────────────┴──────────────────────────────────────┘
+ * </pre>
  */
 @Slf4j
 @Configuration
 public class ModelConfig {
 
+    /**
+     * ChatGPT 同步聊天模型 Bean
+     *
+     * <p>Bean 名称 {@code openAiChatModel} 与 {@link com.aidemo.chat.assistant.ChatGptAssistant}
+     * 中的 {@code @AiService(chatModel = "openAiChatModel")} 对应。</p>
+     */
     @Bean
-    public Map<String, ChatProvider> chatProviders(ModelProperties modelProperties) {
-        Map<String, ChatProvider> providers = new HashMap<>();
-
-        modelProperties.getModels().forEach((name, config) -> {
-            if (config.getApiKey() == null || config.getApiKey().isBlank()
-                    || config.getApiKey().startsWith("your-")) {
-                log.warn("Model [{}] API key not configured, skipping", name);
-                return;
-            }
-
-            var chatBuilder = OpenAiChatModel.builder()
-                    .apiKey(config.getApiKey())
-                    .baseUrl(config.getBaseUrl())
-                    .modelName(config.getModel())
-                    .logRequests(true)
-                    .logResponses(true);
-
-            var streamingBuilder = OpenAiStreamingChatModel.builder()
-                    .apiKey(config.getApiKey())
-                    .baseUrl(config.getBaseUrl())
-                    .modelName(config.getModel())
-                    .logRequests(true)
-                    .logResponses(true);
-
-            if (modelProperties.getProxy().isEnabled()) {
-                HttpClientBuilder proxyClientBuilder = createProxyHttpClientBuilder(modelProperties.getProxy());
-                chatBuilder.httpClientBuilder(proxyClientBuilder);
-                streamingBuilder.httpClientBuilder(proxyClientBuilder);
-                log.info("Model [{}] using proxy: {}://{}:{}", name,
-                        modelProperties.getProxy().getType(),
-                        modelProperties.getProxy().getHost(),
-                        modelProperties.getProxy().getPort());
-            }
-
-            ChatModel chatModel = chatBuilder.build();
-            StreamingChatModel streamingChatModel = streamingBuilder.build();
-
-            ChatProvider provider = createProvider(name, chatModel, streamingChatModel);
-            providers.put(name, provider);
-            log.info("Provider [{}] initialized: baseUrl={}, model={}", name, config.getBaseUrl(), config.getModel());
-        });
-
-        if (providers.isEmpty()) {
-            log.warn("No model configured. Please set valid API keys.");
-        }
-
-        return providers;
+    public OpenAiChatModel openAiChatModel(ModelProperties properties) {
+        var config = properties.getChatgpt();
+        return buildChatModel("openAiChatModel", config, properties.getProxy());
     }
 
     /**
-     * 根据 provider 名称创建对应的策略实现
-     *
-     * <p>新增模型时，在此方法中添加对应分支即可</p>
+     * ChatGPT 流式聊天模型 Bean
      */
-    private ChatProvider createProvider(String name, ChatModel chatModel, StreamingChatModel streamingChatModel) {
-        return switch (name.toLowerCase()) {
-            case "chatgpt" -> new OpenAiChatProvider(chatModel, streamingChatModel);
-            case "deepseek" -> new DeepSeekChatProvider(chatModel, streamingChatModel);
-            // 新增模型时在此添加
-            default -> {
-                log.warn("Unknown provider [{}], fallback to DeepSeek-style (json_object)", name);
-                yield new DeepSeekChatProvider(chatModel, streamingChatModel);
-            }
-        };
+    @Bean
+    public OpenAiStreamingChatModel openAiStreamingChatModel(ModelProperties properties) {
+        var config = properties.getChatgpt();
+        return buildStreamingChatModel("openAiStreamingChatModel", config, properties.getProxy());
+    }
+
+    /**
+     * DeepSeek 同步聊天模型 Bean
+     */
+    @Bean
+    public OpenAiChatModel deepSeekChatModel(ModelProperties properties) {
+        var config = properties.getDeepseek();
+        return buildChatModel("deepSeekChatModel", config, properties.getProxy());
+    }
+
+    /**
+     * DeepSeek 流式聊天模型 Bean
+     */
+    @Bean
+    public OpenAiStreamingChatModel deepSeekStreamingChatModel(ModelProperties properties) {
+        var config = properties.getDeepseek();
+        return buildStreamingChatModel("deepSeekStreamingChatModel", config, properties.getProxy());
+    }
+
+    private OpenAiChatModel buildChatModel(String beanName, ModelProperties.ModelConfig config, ModelProperties.ProxyConfig proxy) {
+        var builder = OpenAiChatModel.builder()
+                .apiKey(config.getApiKey())
+                .baseUrl(config.getBaseUrl())
+                .modelName(config.getModel())
+                .logRequests(true)
+                .logResponses(true);
+
+        if (config.getApiKey() == null || config.getApiKey().isBlank()) {
+            log.warn("Model [{}] API key not configured, will fail at runtime", beanName);
+        }
+
+        if (proxy.isEnabled()) {
+            builder.httpClientBuilder(createProxyHttpClientBuilder(proxy));
+        }
+
+        OpenAiChatModel model = builder.build();
+        log.info("Model [{}] initialized: baseUrl={}, model={}", beanName, config.getBaseUrl(), config.getModel());
+        if (proxy.isEnabled()) {
+            log.info("  proxy: {}://{}:{}", proxy.getType(), proxy.getHost(), proxy.getPort());
+        }
+        return model;
+    }
+
+    private OpenAiStreamingChatModel buildStreamingChatModel(String beanName, ModelProperties.ModelConfig config, ModelProperties.ProxyConfig proxy) {
+        var builder = OpenAiStreamingChatModel.builder()
+                .apiKey(config.getApiKey())
+                .baseUrl(config.getBaseUrl())
+                .modelName(config.getModel())
+                .logRequests(true)
+                .logResponses(true);
+
+        if (config.getApiKey() == null || config.getApiKey().isBlank()) {
+            log.warn("Streaming model [{}] API key not configured, will fail at runtime", beanName);
+        }
+
+        if (proxy.isEnabled()) {
+            builder.httpClientBuilder(createProxyHttpClientBuilder(proxy));
+        }
+
+        return builder.build();
     }
 
     /**
      * 创建带代理的 HttpClientBuilder
+     *
+     * <p>使用 {@link JdkHttpClientBuilder} 包装 {@link HttpClient.Builder}，
+     * 通过 {@link ProxySelector} 配置 SOCKS 或 HTTP 代理。</p>
      */
     private HttpClientBuilder createProxyHttpClientBuilder(ModelProperties.ProxyConfig proxy) {
         ProxySelector proxySelector;

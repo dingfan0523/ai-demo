@@ -6,8 +6,10 @@ spring:
     serialization:
       indent-output: true
 
-# AI 模型配置
-# 支持通过环境变量注入 API Key，避免硬编码敏感信息
+# ============================================================
+# 模型配置（手动 @Bean 创建，不走 starter 自动配置）
+# 代理配置也在此处统一管理
+# ============================================================
 ai:
   default-provider: deepseek
   # 代理配置（访问境外 API 时需要）
@@ -16,12 +18,11 @@ ai:
     host: 127.0.0.1
     port: 10808
     type: http
-  models:
-    chatgpt:
-      api-key: ${CHATGPT_API_KEY:}
-      base-url: ${CHATGPT_BASE_URL:https://api.openai.com/v1}
-      model: ${CHATGPT_MODEL:gpt-5.4}
-    deepseek:
-      api-key: ${DEEPSEEK_API_KEY:}
-      base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com/v1}
-      model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
+  chatgpt:
+    api-key: ${CHATGPT_API_KEY:}
+    base-url: ${CHATGPT_BASE_URL:https://api.openai.com/v1}
+    model: ${CHATGPT_MODEL:gpt-5.4}
+  deepseek:
+    api-key: ${DEEPSEEK_API_KEY:}
+    base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com/v1}
+    model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
