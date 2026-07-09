@@ -1,15 +1,24 @@
 package com.aidemo.chat.service;
 
-import com.aidemo.chat.assistant.ChatGptAssistant;
-import com.aidemo.chat.assistant.DeepSeekAssistant;
 import com.aidemo.chat.dto.ChatRequest;
 import com.aidemo.chat.dto.ChatResponse;
+import com.aidemo.chat.provider.AiProviderClient;
+import com.aidemo.exception.AiServiceBusyException;
 import com.aidemo.model.config.ModelProperties;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import reactor.core.Disposable;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * AI 问答业务逻辑
@@ -34,51 +43,84 @@ import java.io.IOException;
  */
 @Slf4j
 @Service
-public class ChatService {
+public class ChatService implements InitializingBean {
 
-    private final ChatGptAssistant chatGptAssistant;
-    private final DeepSeekAssistant deepSeekAssistant;
+    private final Map<String, AiProviderClient> providerClients;
     private final ModelProperties modelProperties;
+    private final Semaphore concurrencyLimiter;
 
-    public ChatService(ChatGptAssistant chatGptAssistant,
-                       DeepSeekAssistant deepSeekAssistant,
+    public ChatService(List<AiProviderClient> providerClients,
                        ModelProperties modelProperties) {
-        this.chatGptAssistant = chatGptAssistant;
-        this.deepSeekAssistant = deepSeekAssistant;
         this.modelProperties = modelProperties;
+        this.providerClients = providerClients.stream()
+                .collect(Collectors.toUnmodifiableMap(
+                        client -> normalizeProvider(client.name()),
+                        client -> client
+                ));
+        this.concurrencyLimiter = new Semaphore(modelProperties.getMaxConcurrentRequests());
+    }
+
+    @Override
+    public void afterPropertiesSet() {
+        String defaultProvider = normalizeProvider(modelProperties.getDefaultProvider());
+        if (!providerClients.containsKey(defaultProvider)) {
+            throw new IllegalStateException("Default AI provider is not registered: " + defaultProvider);
+        }
     }
 
     /**
      * 普通 AI 问答（同步纯文本）
      */
     public String chatPlain(ChatRequest request) {
-        Assistant assistant = selectAssistant(request.getProvider());
-        log.info("Plain chat request using provider: {}", assistant.name());
-        return assistant.chat(request.getMessage());
+        AiProviderClient provider = selectProvider(request.getProvider());
+        log.info("Plain chat request using provider: {}, model: {}", provider.name(), provider.modelName());
+        return executeWithConcurrencyLimit(() -> provider.chat(request.getMessage()));
     }
 
     /**
      * 流式 AI 问答（SSE 推送）
      */
     public SseEmitter chatStream(ChatRequest request) {
-        Assistant assistant = selectAssistant(request.getProvider());
-        log.info("Stream chat request using provider: {}", assistant.name());
+        AiProviderClient provider = selectProvider(request.getProvider());
+        log.info("Stream chat request using provider: {}, model: {}", provider.name(), provider.modelName());
 
-        SseEmitter emitter = new SseEmitter(0L); // 不设置超时
+        if (!concurrencyLimiter.tryAcquire()) {
+            throw new AiServiceBusyException("AI 服务繁忙，请稍后再试");
+        }
 
-        // 使用 Flux 响应式流，转换为 SSE 推送
-        assistant.chatStream(request.getMessage())
+        SseEmitter emitter = new SseEmitter(modelProperties.getStreamTimeout().toMillis());
+        AtomicBoolean cleaned = new AtomicBoolean(false);
+        Runnable cleanup = () -> {
+            if (cleaned.compareAndSet(false, true)) {
+                concurrencyLimiter.release();
+            }
+        };
+        Disposable subscription = provider.chatStream(request.getMessage())
                 .subscribe(
-                        token -> {
-                            try {
-                                emitter.send(token);
-                            } catch (IOException e) {
-                                log.error("SSE send error", e);
-                            }
+                        token -> sendToken(emitter, token),
+                        error -> {
+                            cleanup.run();
+                            emitter.completeWithError(error);
                         },
-                        emitter::completeWithError,
-                        emitter::complete
+                        () -> {
+                            cleanup.run();
+                            emitter.complete();
+                        }
                 );
+
+        Consumer<Throwable> cleanupWithCancel = error -> {
+            subscription.dispose();
+            cleanup.run();
+        };
+        emitter.onCompletion(() -> {
+            subscription.dispose();
+            cleanup.run();
+        });
+        emitter.onTimeout(() -> {
+            cleanupWithCancel.accept(new IllegalStateException("SSE timeout"));
+            emitter.complete();
+        });
+        emitter.onError(cleanupWithCancel);
 
         return emitter;
     }
@@ -87,67 +129,58 @@ public class ChatService {
      * 结构化 AI 问答（返回 AiReply 实体）
      */
     public ChatResponse chatStructured(ChatRequest request) {
-        Assistant assistant = selectAssistant(request.getProvider());
-        log.info("Structured chat request using provider: {}", assistant.name());
+        AiProviderClient provider = selectProvider(request.getProvider());
+        log.info("Structured chat request using provider: {}, model: {}", provider.name(), provider.modelName());
 
         ChatResponse response = new ChatResponse();
-        response.setReply(assistant.chatStructured(request.getMessage()));
-        response.setProvider(assistant.name());
+        response.setReply(executeWithConcurrencyLimit(() -> provider.chatStructured(request.getMessage())));
+        response.setProvider(provider.name());
+        response.setModel(provider.modelName());
         return response;
     }
 
     /**
      * 选择 assistant：优先使用请求中指定的，否则使用默认配置
      */
-    private Assistant selectAssistant(String requestedProvider) {
-        String name = (requestedProvider != null && !requestedProvider.isBlank())
-                ? requestedProvider.toLowerCase()
-                : modelProperties.getDefaultProvider().toLowerCase();
-
-        return switch (name) {
-            case "chatgpt" -> new Assistant("chatgpt", chatGptAssistant::chat, chatGptAssistant::chatStream, chatGptAssistant::chatStructured);
-            case "deepseek" -> new Assistant("deepseek", deepSeekAssistant::chat, deepSeekAssistant::chatStream, deepSeekAssistant::chatStructured);
-            default -> throw new IllegalArgumentException("Provider not found or not configured: " + name);
-        };
-    }
-
-    /**
-     * 内部辅助接口，统一 ChatGPT / DeepSeek 的调用签名
-     */
-    @FunctionalInterface
-    private interface PlainChat {
-        String chat(String message);
-    }
-
-    @FunctionalInterface
-    private interface StreamChat {
-        reactor.core.publisher.Flux<String> chatStream(String message);
-    }
-
-    @FunctionalInterface
-    private interface StructuredChat {
-        com.aidemo.chat.dto.AiReply chatStructured(String message);
-    }
-
-    /**
-     * 统一封装，消除 switch 分支中的重复代码
-     */
-    private record Assistant(
-            String name,
-            PlainChat plainChat,
-            StreamChat streamChat,
-            StructuredChat structuredChat
-    ) {
-        String chat(String message) {
-            return plainChat.chat(message);
+    private AiProviderClient selectProvider(String requestedProvider) {
+        String name = normalizeProvider(
+                requestedProvider != null && !requestedProvider.isBlank()
+                        ? requestedProvider
+                        : modelProperties.getDefaultProvider()
+        );
+        AiProviderClient provider = providerClients.get(name);
+        if (provider == null) {
+            throw new IllegalArgumentException("Provider not found or not configured: " + name);
         }
+        return provider;
+    }
 
-        reactor.core.publisher.Flux<String> chatStream(String message) {
-            return streamChat.chatStream(message);
+    private String normalizeProvider(String provider) {
+        return provider.toLowerCase(Locale.ROOT).trim();
+    }
+
+    @FunctionalInterface
+    private interface AiCall<T> {
+        T execute();
+    }
+
+    private <T> T executeWithConcurrencyLimit(AiCall<T> call) {
+        if (!concurrencyLimiter.tryAcquire()) {
+            throw new AiServiceBusyException("AI 服务繁忙，请稍后再试");
         }
+        try {
+            return call.execute();
+        } finally {
+            concurrencyLimiter.release();
+        }
+    }
 
-        com.aidemo.chat.dto.AiReply chatStructured(String message) {
-            return structuredChat.chatStructured(message);
+    private void sendToken(SseEmitter emitter, String token) {
+        try {
+            emitter.send(token);
+        } catch (IOException e) {
+            log.warn("SSE send failed, completing stream");
+            emitter.completeWithError(e);
         }
     }
 }

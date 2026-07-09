@@ -29,15 +29,7 @@ public class ChatController {
     @PostMapping
     public Result<String> chat(@RequestBody @Valid ChatRequest request) {
         log.info("Received plain chat request, provider: {}", request.getProvider());
-        try {
-            return Result.success(chatService.chatPlain(request));
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            log.warn("Chat request failed: {}", e.getMessage());
-            return Result.fail(400, e.getMessage());
-        } catch (Exception e) {
-            log.error("Chat request error", e);
-            return Result.fail(500, "AI 服务异常: " + e.getMessage());
-        }
+        return Result.success(chatService.chatPlain(request));
     }
 
     /**
@@ -55,14 +47,6 @@ public class ChatController {
     @PostMapping("/structured")
     public Result<ChatResponse> chatStructured(@RequestBody @Valid ChatRequest request) {
         log.info("Received structured chat request, provider: {}", request.getProvider());
-        try {
-            return Result.success(chatService.chatStructured(request));
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            log.warn("Structured chat request failed: {}", e.getMessage());
-            return Result.fail(400, e.getMessage());
-        } catch (Exception e) {
-            log.error("Structured chat request error", e);
-            return Result.fail(500, "AI 服务异常: " + e.getMessage());
-        }
+        return Result.success(chatService.chatStructured(request));
     }
 }

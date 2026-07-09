@@ -6,12 +6,28 @@ spring:
     serialization:
       indent-output: true
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
 # ============================================================
 # 模型配置（手动 @Bean 创建，不走 starter 自动配置）
 # 代理配置也在此处统一管理
 # ============================================================
 ai:
   default-provider: deepseek
+  request-timeout: 60s
+  stream-timeout: 5m
+  max-concurrent-requests: 20
+  max-retries: 2
+  log-requests: false
+  log-responses: false
   # 代理配置（访问境外 API 时需要）
   proxy:
     enabled: true

@@ -50,7 +50,7 @@ public class ModelConfig {
     @Bean
     public OpenAiChatModel openAiChatModel(ModelProperties properties) {
         var config = properties.getChatgpt();
-        return buildChatModel("openAiChatModel", config, properties.getProxy());
+        return buildChatModel("openAiChatModel", config, properties);
     }
 
     /**
@@ -59,7 +59,7 @@ public class ModelConfig {
     @Bean
     public OpenAiStreamingChatModel openAiStreamingChatModel(ModelProperties properties) {
         var config = properties.getChatgpt();
-        return buildStreamingChatModel("openAiStreamingChatModel", config, properties.getProxy());
+        return buildStreamingChatModel("openAiStreamingChatModel", config, properties);
     }
 
     /**
@@ -68,7 +68,7 @@ public class ModelConfig {
     @Bean
     public OpenAiChatModel deepSeekChatModel(ModelProperties properties) {
         var config = properties.getDeepseek();
-        return buildChatModel("deepSeekChatModel", config, properties.getProxy());
+        return buildChatModel("deepSeekChatModel", config, properties);
     }
 
     /**
@@ -77,16 +77,19 @@ public class ModelConfig {
     @Bean
     public OpenAiStreamingChatModel deepSeekStreamingChatModel(ModelProperties properties) {
         var config = properties.getDeepseek();
-        return buildStreamingChatModel("deepSeekStreamingChatModel", config, properties.getProxy());
+        return buildStreamingChatModel("deepSeekStreamingChatModel", config, properties);
     }
 
-    private OpenAiChatModel buildChatModel(String beanName, ModelProperties.ModelConfig config, ModelProperties.ProxyConfig proxy) {
+    private OpenAiChatModel buildChatModel(String beanName, ModelProperties.ModelConfig config, ModelProperties properties) {
+        ModelProperties.ProxyConfig proxy = properties.getProxy();
         var builder = OpenAiChatModel.builder()
                 .apiKey(config.getApiKey())
                 .baseUrl(config.getBaseUrl())
                 .modelName(config.getModel())
-                .logRequests(true)
-                .logResponses(true);
+                .timeout(properties.getRequestTimeout())
+                .maxRetries(properties.getMaxRetries())
+                .logRequests(properties.isLogRequests())
+                .logResponses(properties.isLogResponses());
 
         if (config.getApiKey() == null || config.getApiKey().isBlank()) {
             log.warn("Model [{}] API key not configured, will fail at runtime", beanName);
@@ -104,13 +107,15 @@ public class ModelConfig {
         return model;
     }
 
-    private OpenAiStreamingChatModel buildStreamingChatModel(String beanName, ModelProperties.ModelConfig config, ModelProperties.ProxyConfig proxy) {
+    private OpenAiStreamingChatModel buildStreamingChatModel(String beanName, ModelProperties.ModelConfig config, ModelProperties properties) {
+        ModelProperties.ProxyConfig proxy = properties.getProxy();
         var builder = OpenAiStreamingChatModel.builder()
                 .apiKey(config.getApiKey())
                 .baseUrl(config.getBaseUrl())
                 .modelName(config.getModel())
-                .logRequests(true)
-                .logResponses(true);
+                .timeout(properties.getRequestTimeout())
+                .logRequests(properties.isLogRequests())
+                .logResponses(properties.isLogResponses());
 
         if (config.getApiKey() == null || config.getApiKey().isBlank()) {
             log.warn("Streaming model [{}] API key not configured, will fail at runtime", beanName);
