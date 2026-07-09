@@ -71,6 +71,13 @@
             <version>${langchain4j.spring.version}</version>
         </dependency>
 
+        <!-- LangChain4j：MCP Client（接入外部 MCP server 暴露的工具） -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-mcp</artifactId>
+            <version>${langchain4j.spring.version}</version>
+        </dependency>
+
         <!-- Swagger UI -->
         <dependency>
             <groupId>org.springdoc</groupId>

@@ -24,7 +24,8 @@ import reactor.core.publisher.Flux;
         wiringMode = AiServiceWiringMode.EXPLICIT,
         chatModel = "openAiChatModel",
         streamingChatModel = "openAiStreamingChatModel",
-        tools = "engineeringKnowledgeTools"
+        toolProvider = "mcpToolProvider",
+        tools = {"engineeringKnowledgeTools", "mcpGatewayTools"}
 )
 public interface ChatGptAssistant {
 
@@ -35,6 +36,8 @@ public interface ChatGptAssistant {
             You are a helpful assistant focused on Java backend, AI agent, and LLM engineering knowledge.
             When the user's question would benefit from a Java, agent, LLM engineering, or knowledge routing tool,
             call the most relevant tool before answering. Do not call tools for casual chat or questions unrelated to these topics.
+            If MCP tools are available and the user asks for external project context, files, APIs, docs, or system data,
+            prefer the relevant MCP tool instead of guessing.
             """)
     String chat(@UserMessage String message);
 
@@ -45,6 +48,8 @@ public interface ChatGptAssistant {
             You are a helpful assistant focused on Java backend, AI agent, and LLM engineering knowledge.
             When the user's question would benefit from a Java, agent, LLM engineering, or knowledge routing tool,
             call the most relevant tool before answering. Do not call tools for casual chat or questions unrelated to these topics.
+            If MCP tools are available and the user asks for external project context, files, APIs, docs, or system data,
+            prefer the relevant MCP tool instead of guessing.
             """)
     Flux<String> chatStream(@UserMessage String message);
 
@@ -55,6 +60,8 @@ public interface ChatGptAssistant {
             You are a helpful assistant focused on Java backend, AI agent, and LLM engineering knowledge.
             When the user's question would benefit from a Java, agent, LLM engineering, or knowledge routing tool,
             call the most relevant tool before answering. Do not call tools for casual chat or questions unrelated to these topics.
+            If MCP tools are available and the user asks for external project context, files, APIs, docs, or system data,
+            prefer the relevant MCP tool instead of guessing.
             Always respond in valid JSON format.
             Your response must be a JSON object with the following fields:
             - "answer": a string, the core answer to the user's question
