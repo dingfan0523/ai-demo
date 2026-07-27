@@ -1,0 +1,172 @@
+package com.aidemo.rag.service;
+
+import com.aidemo.rag.config.RagProperties;
+import com.aidemo.rag.dto.RagChunkHit;
+import com.aidemo.rag.dto.RagIngestRequest;
+import com.aidemo.rag.dto.RagIngestResponse;
+import com.aidemo.rag.dto.RagSource;
+import com.aidemo.rag.dto.RagTraceStep;
+import com.aidemo.rag.model.KnowledgeChunk;
+import com.aidemo.rag.model.KnowledgeDocument;
+import com.aidemo.rag.model.ParsedDocument;
+import com.aidemo.rag.repository.KnowledgeChunkRepository;
+import com.aidemo.rag.repository.KnowledgeDocumentRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * 默认 RAG 入库服务。
+ *
+ * <p>当前实现 Iteration 1 的 Markdown 入库闭环：发现文档、解析、按结构切分、
+ * 基于 contentHash 跳过重复内容，并把文档和 chunk 保存到内存仓储。</p>
+ */
+@Service
+@RequiredArgsConstructor
+public class DefaultRagIngestService implements RagIngestService {
+
+    private static final DateTimeFormatter INDEX_VERSION_FORMAT = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+
+    private final List<DocumentParser> documentParsers;
+    private final DocumentChunker documentChunker;
+    private final KnowledgeDocumentRepository documentRepository;
+    private final KnowledgeChunkRepository chunkRepository;
+    private final RagProperties ragProperties;
+
+    @Override
+    public RagIngestResponse ingest(RagIngestRequest request) {
+        long startedAt = System.currentTimeMillis();
+        DocumentParser parser = selectParser(request.getSourceType());
+        List<Path> files = discoverMarkdownFiles(request.getSourcePath());
+
+        RagIngestResponse response = new RagIngestResponse();
+        response.setEmbeddingModel(ragProperties.getEmbeddingModel());
+        response.setIndexVersion("idx-" + LocalDateTime.now().format(INDEX_VERSION_FORMAT));
+        response.getSteps().add(step("discover_documents", "success", "发现 Markdown 文件 " + files.size() + " 个", startedAt));
+
+        int chunkCount = 0;
+        for (Path file : files) {
+            ParsedDocument parsed = parser.parse(fileRequest(request, file));
+            response.getWarnings().addAll(parsed.getWarnings());
+
+            KnowledgeDocument document = parsed.getDocument();
+            if (!request.isOverwrite() && documentRepository.findByContentHash(document.getContentHash()).isPresent()) {
+                response.setSkippedCount(response.getSkippedCount() + 1);
+                continue;
+            }
+
+            documentRepository.save(document);
+            chunkRepository.deleteByDocumentId(document.getId());
+            List<KnowledgeChunk> chunks = documentChunker.chunk(document, parsed.getContent());
+            chunkRepository.saveAll(chunks);
+
+            response.setDocumentCount(response.getDocumentCount() + 1);
+            chunkCount += chunks.size();
+            if (ragProperties.getDebug().isIncludeContext()) {
+                response.getChunks().addAll(toChunkHits(chunks, document));
+            }
+        }
+
+        response.setChunkCount(chunkCount);
+        response.getSteps().add(step("chunk_documents", "success", "生成 chunk " + chunkCount + " 个", startedAt));
+        response.getSteps().add(step("persist_in_memory", "success", "文档和 chunk 已保存到内存仓储", startedAt));
+        return response;
+    }
+
+    private DocumentParser selectParser(String sourceType) {
+        return documentParsers.stream()
+                .filter(parser -> parser.supports(sourceType))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("不支持的 RAG 文档来源类型: " + sourceType));
+    }
+
+    /**
+     * 支持传入单个 Markdown 文件或目录。目录会递归查找 `.md` 和 `.markdown` 文件。
+     */
+    private List<Path> discoverMarkdownFiles(String sourcePath) {
+        Path path = Path.of(sourcePath).toAbsolutePath().normalize();
+        if (!Files.exists(path)) {
+            throw new IllegalArgumentException("RAG 文档来源路径不存在: " + path);
+        }
+        try {
+            if (Files.isRegularFile(path)) {
+                if (!isMarkdown(path)) {
+                    throw new IllegalArgumentException("当前迭代只支持 Markdown 文件: " + path);
+                }
+                return List.of(path);
+            }
+            try (var paths = Files.walk(path)) {
+                return paths
+                        .filter(Files::isRegularFile)
+                        .filter(this::isMarkdown)
+                        .sorted(Comparator.comparing(Path::toString))
+                        .toList();
+            }
+        } catch (Exception e) {
+            if (e instanceof IllegalArgumentException illegalArgumentException) {
+                throw illegalArgumentException;
+            }
+            throw new IllegalStateException("扫描 RAG 文档来源失败: " + path, e);
+        }
+    }
+
+    private boolean isMarkdown(Path path) {
+        String fileName = path.getFileName().toString().toLowerCase(Locale.ROOT);
+        return fileName.endsWith(".md") || fileName.endsWith(".markdown");
+    }
+
+    private RagIngestRequest fileRequest(RagIngestRequest request, Path file) {
+        RagIngestRequest fileRequest = new RagIngestRequest();
+        fileRequest.setSourceType(request.getSourceType());
+        fileRequest.setSourcePath(file.toString());
+        fileRequest.setTags(request.getTags() == null ? new ArrayList<>() : new ArrayList<>(request.getTags()));
+        fileRequest.setOverwrite(request.isOverwrite());
+        return fileRequest;
+    }
+
+    private List<RagChunkHit> toChunkHits(List<KnowledgeChunk> chunks, KnowledgeDocument document) {
+        return chunks.stream()
+                .map(chunk -> toChunkHit(chunk, document))
+                .toList();
+    }
+
+    private RagChunkHit toChunkHit(KnowledgeChunk chunk, KnowledgeDocument document) {
+        RagSource source = new RagSource();
+        source.setDocumentId(document.getId());
+        source.setChunkId(chunk.getId());
+        source.setTitle(document.getTitle());
+        source.setSourceUri(document.getSourceUri());
+        source.setSectionTitle(chunk.getSectionTitle());
+        source.setStartLine(chunk.getStartLine());
+        source.setEndLine(chunk.getEndLine());
+
+        RagChunkHit hit = new RagChunkHit();
+        hit.setDocumentId(document.getId());
+        hit.setChunkId(chunk.getId());
+        hit.setTitle(document.getTitle());
+        hit.setContent(chunk.getContent());
+        hit.setContentPreview(chunk.getContent().length() > 160
+                ? chunk.getContent().substring(0, 160) + "..."
+                : chunk.getContent());
+        hit.setSource(source);
+        hit.setMetadata(chunk.getMetadata());
+        return hit;
+    }
+
+    private RagTraceStep step(String name, String status, String detail, long startedAt) {
+        RagTraceStep step = new RagTraceStep();
+        step.setName(name);
+        step.setStatus(status);
+        step.setDetail(detail);
+        step.setDurationMs(System.currentTimeMillis() - startedAt);
+        return step;
+    }
+}
