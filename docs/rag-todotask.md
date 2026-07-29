@@ -192,7 +192,7 @@ finalScore = vectorScore * 0.60
 
 ## Iteration 4 - 带引用的 RAG 答案生成
 
-状态：TODO
+状态：DONE
 
 目标：基于召回上下文生成答案，并返回可信来源。
 
@@ -221,6 +221,16 @@ finalScore = vectorScore * 0.60
 - 检索为空或置信度过低时，返回“知识库中没有足够依据”一类的明确回答。
 - 每个返回引用都能映射到本次召回的 chunk。
 - 现有 `/api/chat` 测试继续通过。
+
+完成记录：
+
+- 已新增 `DefaultContextAssembler`，把重排后的 chunk 组装为带 `[source:chunkId]` 的上下文证据块。
+- 已新增 `DefaultRagAnswerService`，完成检索、上下文组装、模型调用、引用校验和低置信度兜底。
+- 已新增 `POST /api/rag/query`，返回 `answer`、`sources`、`contexts`、`provider`、`model`、`traceId`、`confidence` 和 trace steps。
+- 已构造中文 RAG prompt，明确知识库内容是不可信参考材料，不能覆盖系统规则。
+- 已实现引用校验：模型返回的 source id 必须来自本次上下文；无效引用会从答案中移除，返回 sources 只取可信上下文来源。
+- 已补充测试：`DefaultContextAssemblerTest`、`DefaultRagAnswerServiceTest`。
+- 已执行 `mvn test`，结果通过：26 个测试，0 failure，0 error。
 
 ## Iteration 5 - PDF 与混合文档解析
 

@@ -2,18 +2,18 @@
 
 ## 当前状态
 
-- 当前阶段：Iteration 4 - 带引用的 RAG 答案生成
+- 当前阶段：Iteration 5 - PDF 与混合文档解析
 - 阶段状态：TODO
 - 最近更新：2026-07-29
 - 工作原则：先完成可编译、可追踪、可继续的 RAG 模块边界，不直接进入 Markdown 入库或向量数据库实现；后续 RAG 开发遵循 `docs/rag-development-guidelines.md`，中文注释和中文提示优先。
 
 ## 本轮目标
 
-- Iteration 4：带引用的 RAG 答案生成。
-- 新增 `POST /api/rag/query`，在现有检索链路基础上生成答案。
-- 构造中文 RAG prompt，明确知识库内容只是“不可信参考材料”。
-- 返回 `answer`、`sources`、`contexts`、`provider`、`model`、`traceId`、`confidence`。
-- 增加引用校验，避免模型编造不存在的 source id。
+- Iteration 5：PDF 与混合文档解析。
+- 增加 PDF 文本抽取能力。
+- 在元数据中保留页码。
+- 识别图片占比高或扫描型 PDF，并返回 warning。
+- 增加解析诊断信息：抽取文本长度、页数、warning 列表、忽略元素。
 - 保持现有 `/api/chat` 行为不变。
 
 ## 已完成
@@ -50,24 +50,33 @@
 - search 响应已返回 `vectorScore`、`keywordScore`、`rerankScore`、`matchedTokens` 和可观察 trace steps。
 - 已补充混合召回与 rerank 相关测试。
 - 已执行 `mvn test`，结果通过：23 个测试，0 failure，0 error。
+- 已完成 Iteration 4：带引用的 RAG 答案生成。
+- 已新增 `DefaultContextAssembler`，把 chunk 组装为带 `[source:chunkId]` 的上下文证据块。
+- 已新增 `DefaultRagAnswerService`，完成检索、上下文组装、模型调用、引用校验和低置信度兜底。
+- 已新增 `POST /api/rag/query`，返回答案、可信来源、上下文、provider、model、traceId、confidence 和 trace steps。
+- 已构造中文 RAG prompt，明确知识库内容是不可信参考材料。
+- 已实现引用校验，模型返回的 source id 必须来自本次上下文；无效引用会从答案中移除。
+- 已补充答案生成和上下文组装测试。
+- 已执行 `mvn test`，结果通过：26 个测试，0 failure，0 error。
 
 ## 正在进行
 
-- 等待进入 Iteration 4。
+- 等待进入 Iteration 5。
 
 ## 待完成
 
-- Iteration 4：带引用的 RAG 答案生成。
-- 设计 RAG answer adapter，避免把检索逻辑塞进现有 `ChatService`。
-- 组装带 source id 的上下文片段。
-- 构造中文 RAG prompt，并要求模型只基于上下文回答。
-- 增加引用校验和低置信度兜底回答。
-- 补充答案生成、引用映射和空召回测试。
+- Iteration 5：PDF 与混合文档解析。
+- 设计 PDF parser adapter，先支持文本型 PDF。
+- 在 chunk/source 元数据里保留页码。
+- 对扫描型或图片型 PDF 返回 warning。
+- ingest 响应补充 parser warnings 和解析诊断信息。
+- 补充 PDF 文本抽取、页码溯源和 warning 测试。
 
 ## 本轮暂不做
 
 - 不接外部向量数据库。
 - 不接模型化 rerank。
+- 不做完整 OCR 管线。
 - 不修改 `src/main/resources/application.yml` 中已有本地配置。
 
 ## 切换会话恢复提示
@@ -85,5 +94,5 @@
 
 - 命令：`mvn test`
 - 结果：BUILD SUCCESS
-- 测试统计：23 tests, 0 failures, 0 errors, 0 skipped
-- 时间：2026-07-29 09:15 Asia/Shanghai
+- 测试统计：26 tests, 0 failures, 0 errors, 0 skipped
+- 时间：2026-07-29 15:56 Asia/Shanghai
