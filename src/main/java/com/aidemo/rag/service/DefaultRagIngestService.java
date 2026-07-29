@@ -6,11 +6,14 @@ import com.aidemo.rag.dto.RagIngestRequest;
 import com.aidemo.rag.dto.RagIngestResponse;
 import com.aidemo.rag.dto.RagSource;
 import com.aidemo.rag.dto.RagTraceStep;
+import com.aidemo.rag.model.ChunkEmbedding;
+import com.aidemo.rag.model.EmbeddingVector;
 import com.aidemo.rag.model.KnowledgeChunk;
 import com.aidemo.rag.model.KnowledgeDocument;
 import com.aidemo.rag.model.ParsedDocument;
 import com.aidemo.rag.repository.KnowledgeChunkRepository;
 import com.aidemo.rag.repository.KnowledgeDocumentRepository;
+import com.aidemo.rag.vector.VectorStore;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -26,8 +29,8 @@ import java.util.Locale;
 /**
  * 默认 RAG 入库服务。
  *
- * <p>当前实现 Iteration 1 的 Markdown 入库闭环：发现文档、解析、按结构切分、
- * 基于 contentHash 跳过重复内容，并把文档和 chunk 保存到内存仓储。</p>
+ * <p>当前实现 Markdown 入库和本地索引闭环：发现文档、解析、按结构切分、
+ * 基于 contentHash 跳过重复内容，并把文档、chunk 和学习用向量保存到内存仓储。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -39,6 +42,8 @@ public class DefaultRagIngestService implements RagIngestService {
     private final DocumentChunker documentChunker;
     private final KnowledgeDocumentRepository documentRepository;
     private final KnowledgeChunkRepository chunkRepository;
+    private final EmbeddingService embeddingService;
+    private final VectorStore vectorStore;
     private final RagProperties ragProperties;
 
     @Override
@@ -54,19 +59,28 @@ public class DefaultRagIngestService implements RagIngestService {
 
         int chunkCount = 0;
         for (Path file : files) {
+            //解析后的文档内容（里面包含知识库document）
             ParsedDocument parsed = parser.parse(fileRequest(request, file));
             response.getWarnings().addAll(parsed.getWarnings());
 
+            //判断知识库的内容是否改变，以及是否要重写
             KnowledgeDocument document = parsed.getDocument();
             if (!request.isOverwrite() && documentRepository.findByContentHash(document.getContentHash()).isPresent()) {
                 response.setSkippedCount(response.getSkippedCount() + 1);
                 continue;
             }
-
+            //保存知识库文档内容
             documentRepository.save(document);
+            //删除该知识库下的切块数据
             chunkRepository.deleteByDocumentId(document.getId());
+            //删除该知识库下的切块向量数据
+            vectorStore.deleteByDocumentId(document.getId());
+            //将内容切块并携带知识库文档部分信息（如文档id，文档来源，文档标题等）
             List<KnowledgeChunk> chunks = documentChunker.chunk(document, parsed.getContent());
+            //保存检索块
             chunkRepository.saveAll(chunks);
+            //对每个检索块进行向量化然后存储
+            vectorStore.saveAll(toEmbeddings(document, chunks, response.getIndexVersion()));
 
             response.setDocumentCount(response.getDocumentCount() + 1);
             chunkCount += chunks.size();
@@ -77,7 +91,8 @@ public class DefaultRagIngestService implements RagIngestService {
 
         response.setChunkCount(chunkCount);
         response.getSteps().add(step("chunk_documents", "success", "生成 chunk " + chunkCount + " 个", startedAt));
-        response.getSteps().add(step("persist_in_memory", "success", "文档和 chunk 已保存到内存仓储", startedAt));
+        response.getSteps().add(step("embed_chunks", "success", "已使用 " + embeddingService.modelName() + " 生成本地向量", startedAt));
+        response.getSteps().add(step("persist_in_memory", "success", "文档、chunk 和向量已保存到内存仓储", startedAt));
         return response;
     }
 
@@ -136,6 +151,37 @@ public class DefaultRagIngestService implements RagIngestService {
         return chunks.stream()
                 .map(chunk -> toChunkHit(chunk, document))
                 .toList();
+    }
+
+    /**
+     * 为 chunk 生成 embedding 记录。
+     *
+     * <p>这里把 sourceUri 和 tags 放入向量 metadata，便于本地 VectorStore 做基础过滤。
+     * 后续接 pgvector 时，这些字段也会成为 metadata filter 的候选字段。</p>
+     */
+    private List<ChunkEmbedding> toEmbeddings(KnowledgeDocument document, List<KnowledgeChunk> chunks, String indexVersion) {
+        List<EmbeddingVector> vectors = embeddingService.embedAll(chunks.stream()
+                .map(KnowledgeChunk::getContent)
+                .toList());
+        List<ChunkEmbedding> embeddings = new ArrayList<>();
+        for (int i = 0; i < chunks.size(); i++) {
+            KnowledgeChunk chunk = chunks.get(i);
+            EmbeddingVector vector = vectors.get(i);
+
+            ChunkEmbedding embedding = new ChunkEmbedding();
+            embedding.setId(chunk.getId() + "#embedding-" + embeddingService.modelName());
+            embedding.setDocumentId(document.getId());
+            embedding.setChunkId(chunk.getId());
+            embedding.setEmbeddingModel(vector.getModel());
+            embedding.setVectorDimension(vector.getDimension());
+            embedding.setVector(vector.getValues());
+            embedding.setIndexVersion(indexVersion);
+            embedding.setCreatedAt(chunk.getCreatedAt());
+            embedding.getMetadata().put("sourceUri", document.getSourceUri());
+            embedding.getMetadata().put("tags", document.getTags());
+            embeddings.add(embedding);
+        }
+        return embeddings;
     }
 
     private RagChunkHit toChunkHit(KnowledgeChunk chunk, KnowledgeDocument document) {

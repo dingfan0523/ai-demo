@@ -100,7 +100,7 @@
 
 ## Iteration 2 - 基础 Embedding 与本地向量存储
 
-状态：TODO
+状态：DONE
 
 目标：跑通最小可用的向量检索闭环。
 
@@ -130,9 +130,19 @@
 - 响应可配置是否包含内容预览，便于 debug。
 - topK 和 minScore 受到配置上限保护。
 
+完成记录：
+
+- 已新增学习阶段本地 embedding 实现：`LocalHashEmbeddingService`。
+- 已新增内存向量存储：`InMemoryVectorStore`。
+- 已在 Markdown 入库后为 chunk 生成并保存向量。
+- 已新增 `POST /api/rag/search`，用于只检索、不生成答案。
+- search 响应返回命中 chunk、vector score、source、contentPreview 和 trace steps。
+- 已补充测试：`LocalHashEmbeddingServiceTest`、`InMemoryVectorStoreTest`、`DefaultRetrievalServiceTest`。
+- 已执行 `mvn test`，结果通过：20 个测试，0 failure，0 error。
+
 ## Iteration 3 - 混合召回与可解释 Rerank
 
-状态：TODO
+状态：DONE
 
 目标：提升对类名、配置项、API 路径、错误码、中英文混合术语等技术问题的检索效果。
 
@@ -169,6 +179,16 @@ finalScore = vectorScore * 0.60
 - search 响应展示 `vectorScore`、`keywordScore`、`rerankScore`。
 - 包含精确 Java/Spring/RAG 术语的问题，能把标题或关键词命中的 chunk 排到更前。
 - 测试覆盖中文术语、英文标识符和中英文混合查询。
+
+完成记录：
+
+- 已新增 `RagTextTokenizer`，支持英文标识符、数字、中文单字和中文 bigram token，用于学习阶段的中英文混合检索。
+- 已新增 `KeywordScoringService` 和 `KeywordScore`，返回关键词得分和命中的 token，便于观察问题命中了哪些证据。
+- 已新增 `ExplainableRerankService`，按 vector score、keyword score、标题命中和元数据命中合成最终 `rerankScore`。
+- 已将 `DefaultRetrievalService` 调整为混合召回：先扩大向量候选，再合并关键词候选，最后执行可解释 rerank。
+- search 响应已返回 `vectorScore`、`keywordScore`、`rerankScore`、`matchedTokens` 和 `trace steps`。
+- 已补充测试：`RagTextTokenizerTest`、`KeywordScoringServiceTest`、`ExplainableRerankServiceTest`，并更新 `DefaultRetrievalServiceTest`。
+- 已执行 `mvn test`，结果通过：23 个测试，0 failure，0 error。
 
 ## Iteration 4 - 带引用的 RAG 答案生成
 

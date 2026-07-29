@@ -3,6 +3,7 @@ package com.aidemo.rag.repository;
 import com.aidemo.rag.model.KnowledgeChunk;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 知识库 chunk 仓储接口。
@@ -26,6 +27,14 @@ public interface KnowledgeChunkRepository {
      * @return chunk 列表
      */
     List<KnowledgeChunk> findByDocumentId(String documentId);
+
+    /**
+     * 根据 chunk ID 查询切片。
+     *
+     * @param id chunk ID
+     * @return chunk
+     */
+    Optional<KnowledgeChunk> findById(String id);
 
     /**
      * 查询全部 chunk，主要用于学习阶段的本地检索和调试。

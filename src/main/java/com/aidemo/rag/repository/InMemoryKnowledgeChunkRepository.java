@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * 内存版知识 chunk 仓储。
@@ -33,6 +34,11 @@ public class InMemoryKnowledgeChunkRepository implements KnowledgeChunkRepositor
                 .stream()
                 .filter(chunk -> documentId.equals(chunk.getDocumentId()))
                 .toList();
+    }
+
+    @Override
+    public synchronized Optional<KnowledgeChunk> findById(String id) {
+        return Optional.ofNullable(chunks.get(id));
     }
 
     @Override

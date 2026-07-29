@@ -6,6 +6,7 @@ import com.aidemo.rag.dto.RagIngestResponse;
 import com.aidemo.rag.repository.InMemoryKnowledgeChunkRepository;
 import com.aidemo.rag.repository.InMemoryKnowledgeDocumentRepository;
 import com.aidemo.rag.security.BasicRagContentSanitizer;
+import com.aidemo.rag.vector.InMemoryVectorStore;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -57,11 +58,15 @@ class DefaultRagIngestServiceTest {
         BasicRagContentSanitizer sanitizer = new BasicRagContentSanitizer();
         MarkdownDocumentParser parser = new MarkdownDocumentParser(sanitizer);
         MarkdownDocumentChunker chunker = new MarkdownDocumentChunker(properties);
+        LocalHashEmbeddingService embeddingService = new LocalHashEmbeddingService(properties, new RagTextTokenizer());
+        InMemoryVectorStore vectorStore = new InMemoryVectorStore();
         return new DefaultRagIngestService(
                 List.of(parser),
                 chunker,
                 new InMemoryKnowledgeDocumentRepository(),
                 new InMemoryKnowledgeChunkRepository(),
+                embeddingService,
+                vectorStore,
                 properties
         );
     }

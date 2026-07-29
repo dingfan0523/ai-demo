@@ -148,6 +148,7 @@ public class MarkdownDocumentChunker implements DocumentChunker {
         chunk.getMetadata().put("sourceUri", document.getSourceUri());
         chunk.getMetadata().put("sourceType", document.getSourceType());
         chunk.getMetadata().put("titlePath", section.titlePath());
+        chunk.getMetadata().put("tags", document.getTags());
         return chunk;
     }
 

@@ -16,6 +16,8 @@ public class ChunkEmbedding {
 
     private String id;
 
+    private String documentId;
+
     private String chunkId;
 
     private String embeddingModel;
@@ -27,4 +29,6 @@ public class ChunkEmbedding {
     private String indexVersion;
 
     private Instant createdAt;
+
+    private java.util.Map<String, Object> metadata = new java.util.LinkedHashMap<>();
 }

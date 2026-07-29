@@ -45,6 +45,7 @@ public class MarkdownDocumentParser implements DocumentParser {
         }
 
         try {
+            //读取markdown内容，并对格式做简单的清洗
             String rawContent = Files.readString(path, StandardCharsets.UTF_8);
             String content = contentSanitizer.sanitize(rawContent);
             String sourceUri = path.toString();
