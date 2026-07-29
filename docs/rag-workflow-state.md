@@ -2,18 +2,18 @@
 
 ## 当前状态
 
-- 当前阶段：Iteration 5 - PDF 与混合文档解析
+- 当前阶段：Iteration 6 - RAG 评测体系
 - 阶段状态：TODO
 - 最近更新：2026-07-29
 - 工作原则：先完成可编译、可追踪、可继续的 RAG 模块边界，不直接进入 Markdown 入库或向量数据库实现；后续 RAG 开发遵循 `docs/rag-development-guidelines.md`，中文注释和中文提示优先。
 
 ## 本轮目标
 
-- Iteration 5：PDF 与混合文档解析。
-- 增加 PDF 文本抽取能力。
-- 在元数据中保留页码。
-- 识别图片占比高或扫描型 PDF，并返回 warning。
-- 增加解析诊断信息：抽取文本长度、页数、warning 列表、忽略元素。
+- Iteration 6：RAG 评测体系。
+- 增加小型手工评测用例。
+- 记录 retrieval hit rate、rerank hit rate、citation accuracy 和 answer faithfulness notes。
+- 支持对比不同 chunk size、topK、rerank 权重和 embedding model。
+- 让 RAG 调参有可回归的观察结果，而不是只凭主观感觉。
 - 保持现有 `/api/chat` 行为不变。
 
 ## 已完成
@@ -58,25 +58,34 @@
 - 已实现引用校验，模型返回的 source id 必须来自本次上下文；无效引用会从答案中移除。
 - 已补充答案生成和上下文组装测试。
 - 已执行 `mvn test`，结果通过：26 个测试，0 failure，0 error。
+- 已完成 Iteration 5：PDF 与混合文档解析。
+- 已新增 PDFBox 依赖，并排除 `commons-logging`，避免和 Spring Boot `spring-jcl` 产生 classpath 冲突提示。
+- 已新增 `PdfDocumentParser`，支持文本型 PDF 抽取。
+- 已支持 `sourceType=pdf` 的文件发现和入库。
+- 已在 ingest 响应中新增 `diagnostics`，返回 parser、页数、文本页数、空文本页数、抽取文本长度等诊断信息。
+- 已在 chunk、search source 和 RAG query context 中透传 `pageStart`、`pageEnd`。
+- 已对空文本 PDF 返回中文 warning，提示可能是扫描件或图片型 PDF。
+- 已补充 PDF parser 和 PDF 入库页码溯源测试。
+- 已执行 `mvn test`，结果通过：29 个测试，0 failure，0 error。
 
 ## 正在进行
 
-- 等待进入 Iteration 5。
+- 等待进入 Iteration 6。
 
 ## 待完成
 
-- Iteration 5：PDF 与混合文档解析。
-- 设计 PDF parser adapter，先支持文本型 PDF。
-- 在 chunk/source 元数据里保留页码。
-- 对扫描型或图片型 PDF 返回 warning。
-- ingest 响应补充 parser warnings 和解析诊断信息。
-- 补充 PDF 文本抽取、页码溯源和 warning 测试。
+- Iteration 6：RAG 评测体系。
+- 设计 10-20 个小型手工评测用例格式。
+- 实现评测执行入口，复用现有 ingest/search/query 链路。
+- 输出 retrieval hit rate、rerank hit rate、citation accuracy 和基础耗时。
+- 支持把评测结果写入可读报告，便于调参前后对比。
+- 补充评测用例加载、结果统计和回归测试。
 
 ## 本轮暂不做
 
 - 不接外部向量数据库。
 - 不接模型化 rerank。
-- 不做完整 OCR 管线。
+- 不把评测系统做成生产监控平台。
 - 不修改 `src/main/resources/application.yml` 中已有本地配置。
 
 ## 切换会话恢复提示
@@ -94,5 +103,5 @@
 
 - 命令：`mvn test`
 - 结果：BUILD SUCCESS
-- 测试统计：26 tests, 0 failures, 0 errors, 0 skipped
-- 时间：2026-07-29 15:56 Asia/Shanghai
+- 测试统计：29 tests, 0 failures, 0 errors, 0 skipped
+- 时间：2026-07-29 17:14 Asia/Shanghai

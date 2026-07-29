@@ -78,6 +78,19 @@
             <version>${langchain4j.spring.version}</version>
         </dependency>
 
+        <!-- PDFBox：学习阶段用于抽取文本型 PDF，扫描件/OCR 后续再单独扩展 -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.3</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>commons-logging</groupId>
+                    <artifactId>commons-logging</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
         <!-- Swagger UI -->
         <dependency>
             <groupId>org.springdoc</groupId>

@@ -25,11 +25,12 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * 默认 RAG 入库服务。
  *
- * <p>当前实现 Markdown 入库和本地索引闭环：发现文档、解析、按结构切分、
+ * <p>当前实现 Markdown/PDF 入库和本地索引闭环：发现文档、解析、按结构切分、
  * 基于 contentHash 跳过重复内容，并把文档、chunk 和学习用向量保存到内存仓储。</p>
  */
 @Service
@@ -49,19 +50,21 @@ public class DefaultRagIngestService implements RagIngestService {
     @Override
     public RagIngestResponse ingest(RagIngestRequest request) {
         long startedAt = System.currentTimeMillis();
-        DocumentParser parser = selectParser(request.getSourceType());
-        List<Path> files = discoverMarkdownFiles(request.getSourcePath());
+        String sourceType = normalizeSourceType(request.getSourceType());
+        DocumentParser parser = selectParser(sourceType);
+        List<Path> files = discoverFiles(request.getSourcePath(), sourceType);
 
         RagIngestResponse response = new RagIngestResponse();
         response.setEmbeddingModel(ragProperties.getEmbeddingModel());
         response.setIndexVersion("idx-" + LocalDateTime.now().format(INDEX_VERSION_FORMAT));
-        response.getSteps().add(step("discover_documents", "success", "发现 Markdown 文件 " + files.size() + " 个", startedAt));
+        response.getSteps().add(step("discover_documents", "success", "发现 " + sourceType + " 文件 " + files.size() + " 个", startedAt));
 
         int chunkCount = 0;
         for (Path file : files) {
             //解析后的文档内容（里面包含知识库document）
-            ParsedDocument parsed = parser.parse(fileRequest(request, file));
+            ParsedDocument parsed = parser.parse(fileRequest(request, file, sourceType));
             response.getWarnings().addAll(parsed.getWarnings());
+            response.getDiagnostics().add(diagnostic(parsed));
 
             //判断知识库的内容是否改变，以及是否要重写
             KnowledgeDocument document = parsed.getDocument();
@@ -104,24 +107,24 @@ public class DefaultRagIngestService implements RagIngestService {
     }
 
     /**
-     * 支持传入单个 Markdown 文件或目录。目录会递归查找 `.md` 和 `.markdown` 文件。
+     * 支持传入单个文件或目录。目录会按 sourceType 递归查找对应格式文件。
      */
-    private List<Path> discoverMarkdownFiles(String sourcePath) {
+    private List<Path> discoverFiles(String sourcePath, String sourceType) {
         Path path = Path.of(sourcePath).toAbsolutePath().normalize();
         if (!Files.exists(path)) {
             throw new IllegalArgumentException("RAG 文档来源路径不存在: " + path);
         }
         try {
             if (Files.isRegularFile(path)) {
-                if (!isMarkdown(path)) {
-                    throw new IllegalArgumentException("当前迭代只支持 Markdown 文件: " + path);
+                if (!matchesSourceType(path, sourceType)) {
+                    throw new IllegalArgumentException("文件类型与 RAG 来源类型不匹配: " + path + "，sourceType=" + sourceType);
                 }
                 return List.of(path);
             }
             try (var paths = Files.walk(path)) {
                 return paths
                         .filter(Files::isRegularFile)
-                        .filter(this::isMarkdown)
+                        .filter(file -> matchesSourceType(file, sourceType))
                         .sorted(Comparator.comparing(Path::toString))
                         .toList();
             }
@@ -138,13 +141,40 @@ public class DefaultRagIngestService implements RagIngestService {
         return fileName.endsWith(".md") || fileName.endsWith(".markdown");
     }
 
-    private RagIngestRequest fileRequest(RagIngestRequest request, Path file) {
+    private boolean matchesSourceType(Path path, String sourceType) {
+        if ("pdf".equals(sourceType)) {
+            return path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".pdf");
+        }
+        if ("markdown".equals(sourceType) || "md".equals(sourceType)) {
+            return isMarkdown(path);
+        }
+        return false;
+    }
+
+    private String normalizeSourceType(String sourceType) {
+        if (sourceType == null || sourceType.isBlank()) {
+            return "markdown";
+        }
+        String normalized = sourceType.toLowerCase(Locale.ROOT).trim();
+        return "md".equals(normalized) ? "markdown" : normalized;
+    }
+
+    private RagIngestRequest fileRequest(RagIngestRequest request, Path file, String sourceType) {
         RagIngestRequest fileRequest = new RagIngestRequest();
-        fileRequest.setSourceType(request.getSourceType());
+        fileRequest.setSourceType(sourceType);
         fileRequest.setSourcePath(file.toString());
         fileRequest.setTags(request.getTags() == null ? new ArrayList<>() : new ArrayList<>(request.getTags()));
         fileRequest.setOverwrite(request.isOverwrite());
         return fileRequest;
+    }
+
+    private Map<String, Object> diagnostic(ParsedDocument parsed) {
+        Map<String, Object> diagnostic = new java.util.LinkedHashMap<>(parsed.getDiagnostics());
+        diagnostic.put("documentId", parsed.getDocument().getId());
+        diagnostic.put("title", parsed.getDocument().getTitle());
+        diagnostic.put("sourceUri", parsed.getDocument().getSourceUri());
+        diagnostic.put("sourceType", parsed.getDocument().getSourceType());
+        return diagnostic;
     }
 
     private List<RagChunkHit> toChunkHits(List<KnowledgeChunk> chunks, KnowledgeDocument document) {
@@ -193,6 +223,8 @@ public class DefaultRagIngestService implements RagIngestService {
         source.setSectionTitle(chunk.getSectionTitle());
         source.setStartLine(chunk.getStartLine());
         source.setEndLine(chunk.getEndLine());
+        source.setPageStart(chunk.getPageStart());
+        source.setPageEnd(chunk.getPageEnd());
 
         RagChunkHit hit = new RagChunkHit();
         hit.setDocumentId(document.getId());

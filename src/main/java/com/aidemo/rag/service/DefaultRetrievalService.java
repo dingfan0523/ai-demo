@@ -143,6 +143,8 @@ public class DefaultRetrievalService implements RetrievalService {
         source.setSectionTitle(chunk.getSectionTitle());
         source.setStartLine(chunk.getStartLine());
         source.setEndLine(chunk.getEndLine());
+        source.setPageStart(chunk.getPageStart());
+        source.setPageEnd(chunk.getPageEnd());
         source.setScore(vectorScore);
 
         RagChunkHit hit = new RagChunkHit();

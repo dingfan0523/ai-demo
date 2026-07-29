@@ -234,7 +234,7 @@ finalScore = vectorScore * 0.60
 
 ## Iteration 5 - PDF 与混合文档解析
 
-状态：TODO
+状态：DONE
 
 目标：在核心链路跑通后，把文档入库从 Markdown 扩展到 PDF 等混合文档。
 
@@ -263,6 +263,18 @@ finalScore = vectorScore * 0.60
 - 文本型 PDF 可以入库，并保留页码元数据。
 - 扫描型或图片型 PDF 会被识别并给出 warning，而不是生成误导性空 chunk。
 - ingest 响应返回 parser warnings。
+
+完成记录：
+
+- 已新增 PDFBox 依赖，并排除 `commons-logging`，避免和 Spring Boot `spring-jcl` 产生 classpath 冲突提示。
+- 已新增 `PdfDocumentParser`，支持 `sourceType=pdf` 的文本型 PDF 解析。
+- 已将 PDF 每页文本整理为 `## 第 N 页` 章节，并记录 `pageLineRanges`，复用现有标题优先切分策略。
+- 已在 `DefaultRagIngestService` 中支持按 `sourceType` 发现 Markdown/PDF 文件。
+- 已在 `RagIngestResponse` 中新增 `diagnostics`，返回 parser、页数、文本页数、空文本页数、抽取文本长度等诊断信息。
+- 已在 chunk、search source 和 RAG query context 中透传 `pageStart`、`pageEnd`。
+- 已对空文本 PDF 返回中文 warning，提示可能是扫描件或图片型 PDF。
+- 已补充测试：`PdfDocumentParserTest`、`DefaultRagIngestPdfServiceTest`。
+- 已执行 `mvn test`，结果通过：29 个测试，0 failure，0 error。
 
 ## Iteration 6 - RAG 评测体系
 

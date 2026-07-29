@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Markdown 文档切分器。
@@ -144,12 +145,61 @@ public class MarkdownDocumentChunker implements DocumentChunker {
         chunk.setSectionTitle(section.title());
         chunk.setStartLine(section.startLine());
         chunk.setEndLine(section.endLine());
+        applyPageRange(document, chunk, section);
         chunk.setCreatedAt(Instant.now());
         chunk.getMetadata().put("sourceUri", document.getSourceUri());
         chunk.getMetadata().put("sourceType", document.getSourceType());
         chunk.getMetadata().put("titlePath", section.titlePath());
         chunk.getMetadata().put("tags", document.getTags());
+        if (chunk.getPageStart() != null) {
+            chunk.getMetadata().put("pageStart", chunk.getPageStart());
+            chunk.getMetadata().put("pageEnd", chunk.getPageEnd());
+        }
         return chunk;
+    }
+
+    /**
+     * 根据 parser 记录的页码行号范围，为 PDF chunk 回填页码。
+     *
+     * <p>Markdown 没有页码，该逻辑会自然跳过；PDF 解析器会在 document metadata 中放入
+     * pageLineRanges，chunker 只负责把行号区间映射为页码区间。</p>
+     */
+    private void applyPageRange(KnowledgeDocument document, KnowledgeChunk chunk, Section section) {
+        Object rawRanges = document.getMetadata().get("pageLineRanges");
+        if (!(rawRanges instanceof List<?> ranges)) {
+            return;
+        }
+
+        Integer pageStart = null;
+        Integer pageEnd = null;
+        for (Object rawRange : ranges) {
+            if (!(rawRange instanceof Map<?, ?> range)) {
+                continue;
+            }
+            Integer page = toInteger(range.get("page"));
+            Integer startLine = toInteger(range.get("startLine"));
+            Integer endLine = toInteger(range.get("endLine"));
+            if (page == null || startLine == null || endLine == null) {
+                continue;
+            }
+            boolean intersects = section.startLine() <= endLine && section.endLine() >= startLine;
+            if (intersects) {
+                pageStart = pageStart == null ? page : Math.min(pageStart, page);
+                pageEnd = pageEnd == null ? page : Math.max(pageEnd, page);
+            }
+        }
+        chunk.setPageStart(pageStart);
+        chunk.setPageEnd(pageEnd);
+    }
+
+    private Integer toInteger(Object value) {
+        if (value instanceof Integer integer) {
+            return integer;
+        }
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        return null;
     }
 
     private Heading parseHeading(String line) {

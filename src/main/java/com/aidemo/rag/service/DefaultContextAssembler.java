@@ -49,6 +49,13 @@ public class DefaultContextAssembler implements ContextAssembler {
                         .append(source.getEndLine() == null ? "未知" : source.getEndLine())
                         .append("\n");
             }
+            if (source.getPageStart() != null || source.getPageEnd() != null) {
+                block.append("页码: ")
+                        .append(source.getPageStart() == null ? "未知" : source.getPageStart())
+                        .append("-")
+                        .append(source.getPageEnd() == null ? "未知" : source.getPageEnd())
+                        .append("\n");
+            }
         }
         block.append("重排分: ").append(hit.getRerankScore() == null ? 0.0d : hit.getRerankScore()).append("\n");
         block.append("内容:\n").append(nullToEmpty(selectContent(hit))).append("\n\n");
