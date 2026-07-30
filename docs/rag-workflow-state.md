@@ -2,18 +2,18 @@
 
 ## 当前状态
 
-- 当前阶段：Iteration 6 - RAG 评测体系
+- 当前阶段：Iteration 7 - 持久化向量存储
 - 阶段状态：TODO
-- 最近更新：2026-07-29
+- 最近更新：2026-07-30
 - 工作原则：先完成可编译、可追踪、可继续的 RAG 模块边界，不直接进入 Markdown 入库或向量数据库实现；后续 RAG 开发遵循 `docs/rag-development-guidelines.md`，中文注释和中文提示优先。
 
 ## 本轮目标
 
-- Iteration 6：RAG 评测体系。
-- 增加小型手工评测用例。
-- 记录 retrieval hit rate、rerank hit rate、citation accuracy 和 answer faithfulness notes。
-- 支持对比不同 chunk size、topK、rerank 权重和 embedding model。
-- 让 RAG 调参有可回归的观察结果，而不是只凭主观感觉。
+- Iteration 7：持久化向量存储。
+- 在保持模块契约不变的前提下，把本地内存存储替换或扩展为更真实的后端存储。
+- 推荐优先考虑 PostgreSQL + pgvector。
+- 增加 document/chunk/embedding 持久化和 index version/rebuild 能力。
+- 查询时继续支持 metadata filter。
 - 保持现有 `/api/chat` 行为不变。
 
 ## 已完成
@@ -67,25 +67,35 @@
 - 已对空文本 PDF 返回中文 warning，提示可能是扫描件或图片型 PDF。
 - 已补充 PDF parser 和 PDF 入库页码溯源测试。
 - 已执行 `mvn test`，结果通过：29 个测试，0 failure，0 error。
+- 已完成 Iteration 6：RAG 评测体系。
+- 已新增 RAG 评测 DTO：`RagEvalCase`、`RagEvalRequest`、`RagEvalCaseResult`、`RagEvalResponse`。
+- 已新增 `RagEvalService` 和 `DefaultRagEvalService`，复用现有检索链路执行手工黄金用例评测。
+- 已新增 `POST /api/rag/evaluate`，返回 retrieval hit rate、rerank hit rate、keyword hit rate、耗时、逐用例结果和 Markdown 报告。
+- 已支持通过请求体 `cases` 或 JSON 文件 `casesPath` 加载评测用例。
+- 已支持通过 `reportPath` 写出 Markdown 评测报告。
+- 已新增 `docs/rag-eval-guide.md`，说明评测用例格式和接口用法。
+- 已补充评测服务测试，覆盖指标统计、JSON 用例加载和报告落盘。
+- 已执行 `mvn test`，结果通过：31 个测试，0 failure，0 error。
 
 ## 正在进行
 
-- 等待进入 Iteration 6。
+- 等待进入 Iteration 7。
 
 ## 待完成
 
-- Iteration 6：RAG 评测体系。
-- 设计 10-20 个小型手工评测用例格式。
-- 实现评测执行入口，复用现有 ingest/search/query 链路。
-- 输出 retrieval hit rate、rerank hit rate、citation accuracy 和基础耗时。
-- 支持把评测结果写入可读报告，便于调参前后对比。
-- 补充评测用例加载、结果统计和回归测试。
+- Iteration 7：持久化向量存储。
+- 设计 PostgreSQL + pgvector 的最小表结构。
+- 增加 document/chunk/embedding 持久化仓储实现。
+- 支持 index version 和 rebuild。
+- 查询时支持 metadata filter。
+- 增加本地启动和迁移说明。
+- 保持现有内存实现可用，便于学习阶段对比。
 
 ## 本轮暂不做
 
-- 不接外部向量数据库。
+- 不接 Milvus/Qdrant 等独立向量平台。
 - 不接模型化 rerank。
-- 不把评测系统做成生产监控平台。
+- 不把持久化方案扩展成分布式索引任务。
 - 不修改 `src/main/resources/application.yml` 中已有本地配置。
 
 ## 切换会话恢复提示
@@ -103,5 +113,5 @@
 
 - 命令：`mvn test`
 - 结果：BUILD SUCCESS
-- 测试统计：29 tests, 0 failures, 0 errors, 0 skipped
-- 时间：2026-07-29 17:14 Asia/Shanghai
+- 测试统计：31 tests, 0 failures, 0 errors, 0 skipped
+- 时间：2026-07-30 09:02 Asia/Shanghai

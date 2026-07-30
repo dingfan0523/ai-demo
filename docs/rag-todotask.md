@@ -278,7 +278,7 @@ finalScore = vectorScore * 0.60
 
 ## Iteration 6 - RAG 评测体系
 
-状态：TODO
+状态：DONE
 
 目标：建立一个小型回归评测工具，用来判断 RAG 调参后是否真的变好。
 
@@ -303,6 +303,17 @@ finalScore = vectorScore * 0.60
 
 - eval 结果能展示哪些用例在 topK 和 rerankTopK 中命中了期望来源。
 - 修改 chunk 参数后，可以和上一轮结果对比。
+
+完成记录：
+
+- 已新增 `RagEvalCase`、`RagEvalRequest`、`RagEvalCaseResult`、`RagEvalResponse`，定义学习阶段手工评测用例和结果结构。
+- 已新增 `RagEvalService` 和 `DefaultRagEvalService`，复用现有 `RetrievalService` 执行检索评测。
+- 已新增 `POST /api/rag/evaluate`，返回 retrieval hit rate、rerank hit rate、keyword hit rate、耗时、逐用例结果和 Markdown 报告。
+- 已支持两种用例来源：请求体直接传入 `cases`，或通过 `casesPath` 加载 JSON 文件。
+- 已支持 `reportPath`，可以把本次评测报告写入 Markdown 文件，方便调参前后对比。
+- 已新增 `docs/rag-eval-guide.md`，说明评测接口、用例格式和当前取舍。
+- 已补充测试：`DefaultRagEvalServiceTest`，覆盖指标统计、JSON 用例加载和报告落盘。
+- 已执行 `mvn test`，结果通过：31 个测试，0 failure，0 error。
 
 ## Iteration 7 - 持久化向量存储
 

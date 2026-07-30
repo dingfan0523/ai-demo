@@ -1,6 +1,8 @@
 package com.aidemo.rag.controller;
 
 import com.aidemo.common.Result;
+import com.aidemo.rag.dto.RagEvalRequest;
+import com.aidemo.rag.dto.RagEvalResponse;
 import com.aidemo.rag.dto.RagIngestRequest;
 import com.aidemo.rag.dto.RagIngestResponse;
 import com.aidemo.rag.dto.RagQueryRequest;
@@ -8,6 +10,7 @@ import com.aidemo.rag.dto.RagQueryResponse;
 import com.aidemo.rag.dto.RagSearchRequest;
 import com.aidemo.rag.dto.RagSearchResponse;
 import com.aidemo.rag.service.RagAnswerService;
+import com.aidemo.rag.service.RagEvalService;
 import com.aidemo.rag.service.RagIngestService;
 import com.aidemo.rag.service.RetrievalService;
 import jakarta.validation.Valid;
@@ -21,8 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * RAG 接口入口。
  *
- * <p>当前开放 Markdown 入库和检索接口，用于学习和观察 RAG 离线/在线前半段链路。
- * 答案生成接口会在后续迭代中补充。</p>
+ * <p>当前开放文档入库、检索、问答和评测接口，用于学习和观察 RAG 离线/在线完整链路。</p>
  */
 @RestController
 @RequestMapping("/api/rag")
@@ -33,6 +35,7 @@ public class RagController {
     private final RagIngestService ragIngestService;
     private final RetrievalService retrievalService;
     private final RagAnswerService ragAnswerService;
+    private final RagEvalService ragEvalService;
 
     /**
      * 导入 Markdown 文档并返回切分结果。
@@ -68,5 +71,17 @@ public class RagController {
     public Result<RagQueryResponse> query(@RequestBody @Valid RagQueryRequest request) {
         log.info("RAG在线阶段答案生成=======>");
         return Result.success(ragAnswerService.answer(request));
+    }
+
+    /**
+     * 执行 RAG 检索评测，用于观察召回和重排是否命中手工期望来源。
+     *
+     * @param request 评测请求
+     * @return 汇总指标、逐用例结果和 Markdown 报告
+     */
+    @PostMapping("/evaluate")
+    public Result<RagEvalResponse> evaluate(@RequestBody @Valid RagEvalRequest request) {
+        log.info("RAG评测阶段执行=======>");
+        return Result.success(ragEvalService.evaluate(request));
     }
 }
