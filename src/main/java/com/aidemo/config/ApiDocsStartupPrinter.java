@@ -7,27 +7,27 @@ import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 /**
- * 启动时打印 Swagger 文档地址
+ * 启动时打印接口文档地址。
  */
 @Slf4j
 @Component
-public class SwaggerStartupPrinter implements ApplicationRunner {
+public class ApiDocsStartupPrinter implements ApplicationRunner {
 
     private final Environment environment;
 
-    public SwaggerStartupPrinter(Environment environment) {
+    public ApiDocsStartupPrinter(Environment environment) {
         this.environment = environment;
     }
 
     @Override
     public void run(ApplicationArguments args) {
         String port = environment.getProperty("server.port", "8080");
-        String swaggerUrl = "http://localhost:" + port + "/swagger-ui/index.html";
+        String knife4jUrl = "http://localhost:" + port + "/doc.html";
         String apiDocsUrl = "http://localhost:" + port + "/v3/api-docs";
 
         log.info("==================================================");
-        log.info("Swagger UI: {}", swaggerUrl);
-        log.info("API Docs:   {}", apiDocsUrl);
+        log.info("Knife4j UI: {}", knife4jUrl);
+        log.info("OpenAPI:   {}", apiDocsUrl);
         log.info("==================================================");
     }
 }

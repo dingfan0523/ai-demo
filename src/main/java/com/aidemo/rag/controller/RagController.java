@@ -13,6 +13,8 @@ import com.aidemo.rag.service.RagAnswerService;
 import com.aidemo.rag.service.RagEvalService;
 import com.aidemo.rag.service.RagIngestService;
 import com.aidemo.rag.service.RetrievalService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/rag")
 @RequiredArgsConstructor
 @Slf4j
+@Tag(name = "RAG 学习", description = "RAG 入库、检索、问答和评测调试接口")
 public class RagController {
 
     private final RagIngestService ragIngestService;
@@ -44,6 +47,7 @@ public class RagController {
      * @return 入库统计、warning、trace steps 和调试 chunk
      */
     @PostMapping("/ingest")
+    @Operation(summary = "文档入库", description = "导入 Markdown、文本或 PDF 文档，返回切分、向量化和入库调试信息。")
     public Result<RagIngestResponse> ingest(@RequestBody @Valid RagIngestRequest request) {
         log.info("RAG离线阶段数据准备=======>");
         return Result.success(ragIngestService.ingest(request));
@@ -56,6 +60,7 @@ public class RagController {
      * @return topK 命中、分数、来源和内容预览
      */
     @PostMapping("/search")
+    @Operation(summary = "只检索不生成", description = "执行召回和重排，不调用大模型，适合排查检索质量。")
     public Result<RagSearchResponse> search(@RequestBody @Valid RagSearchRequest request) {
         log.info("RAG在线阶段数据检索=======>");
         return Result.success(retrievalService.search(request));
@@ -68,6 +73,7 @@ public class RagController {
      * @return 带答案、上下文和可信来源的 RAG 响应
      */
     @PostMapping("/query")
+    @Operation(summary = "RAG 问答", description = "执行检索、重排、上下文组装、模型生成和引用校验。")
     public Result<RagQueryResponse> query(@RequestBody @Valid RagQueryRequest request) {
         log.info("RAG在线阶段答案生成=======>");
         return Result.success(ragAnswerService.answer(request));
@@ -80,6 +86,7 @@ public class RagController {
      * @return 汇总指标、逐用例结果和 Markdown 报告
      */
     @PostMapping("/evaluate")
+    @Operation(summary = "RAG 检索评测", description = "执行手工评测用例，观察召回和重排是否命中预期来源。")
     public Result<RagEvalResponse> evaluate(@RequestBody @Valid RagEvalRequest request) {
         log.info("RAG评测阶段执行=======>");
         return Result.success(ragEvalService.evaluate(request));
