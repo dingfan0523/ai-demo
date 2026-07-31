@@ -66,8 +66,53 @@ public class RagProperties {
     private String embeddingModel = "local-learning-embedding";
 
     @Valid
+    @NotNull(message = "RAG 向量存储配置不能为空")
+    private VectorStore vectorStore = new VectorStore();
+
+    @Valid
+    @NotNull(message = "RAG Elasticsearch 配置不能为空")
+    private Elasticsearch elasticsearch = new Elasticsearch();
+
+    @Valid
     @NotNull(message = "RAG debug 配置不能为空")
     private Debug debug = new Debug();
+
+    /**
+     * 向量存储选择。
+     *
+     * <p>默认继续使用 memory，只有显式配置为 elasticsearch 时才启用 ES 实现，
+     * 避免学习阶段因为本地 ES 未启动而影响现有链路。</p>
+     */
+    @Data
+    public static class VectorStore {
+
+        @NotBlank(message = "RAG 向量存储类型不能为空")
+        private String type = "elasticsearch";
+    }
+
+    /**
+     * Elasticsearch 向量存储配置。
+     *
+     * <p>当前按 ES 7.17 兼容方式实现：dense_vector + script_score 精确向量检索。
+     * 后续升级到 ES 8/9 原生 knn 时，可以继续在这里扩展 searchMode。</p>
+     */
+    @Data
+    public static class Elasticsearch {
+
+        @NotBlank(message = "RAG Elasticsearch 地址不能为空")
+        private String baseUrl = "http://localhost:9200";
+
+        @NotBlank(message = "RAG Elasticsearch 索引名不能为空")
+        private String indexName = "ai_demo_rag_chunks";
+
+        @Min(value = 1, message = "RAG Elasticsearch 请求超时不能小于 1 秒")
+        @Max(value = 300, message = "RAG Elasticsearch 请求超时不能大于 300 秒")
+        private int requestTimeoutSeconds = 30;
+
+        /** 当前默认只实现 script_score，后续可以扩展 knn。 */
+        @NotBlank(message = "RAG Elasticsearch 搜索模式不能为空")
+        private String searchMode = "script_score";
+    }
 
     /**
      * Debug 输出配置。

@@ -317,7 +317,7 @@ finalScore = vectorScore * 0.60
 
 ## Iteration 7 - 持久化向量存储
 
-状态：TODO
+状态：DONE
 
 目标：在保持模块契约不变的前提下，把本地向量存储替换为更真实的后端存储。
 
@@ -343,6 +343,21 @@ finalScore = vectorScore * 0.60
 - 应用重启后索引向量不丢失。
 - 更换 embedding model 后，可以重建 embedding，而不重写源文档。
 - 搜索结果仍符合本地向量存储时期的接口契约。
+
+完成记录：
+
+- 已根据本机环境将原 PostgreSQL + pgvector 路线调整为 Elasticsearch 7.17 兼容路线。
+- 已新增 `rag.vector-store.type` 配置，默认继续使用 `memory`，显式配置 `elasticsearch` 时启用 ES 实现。
+- 已新增 `RagProperties.Elasticsearch` 配置：`baseUrl`、`indexName`、`requestTimeoutSeconds`、`searchMode`。
+- 已新增 `ElasticsearchVectorStore`，使用 JDK `HttpClient` 调用 ES REST API，避免绑定过重的 ES Java client。
+- 已支持首次写入时自动创建 ES index mapping，向量字段使用 `dense_vector`。
+- 已支持 bulk 写入 chunk embedding，文档中同时保存 chunk 正文、标题、来源、页码、tags、indexVersion 等兜底字段。
+- 已支持 `script_score + cosineSimilarity(params.queryVector, 'vector') + 1.0` 精确向量检索，并把 ES 分数转回 `0-1` 区间。
+- 已支持基于 tags 的全部命中过滤和按 documentId 删除向量文档。
+- 已调整检索服务：当内存 chunk 仓储缺失时，可使用 ES 返回的持久化字段组装 search/query 上下文。
+- 已新增 `docs/rag-elasticsearch-vector-store.md`，记录 ES 7.17 兼容方案、配置示例、当前取舍和本地检查命令。
+- 已补充测试：`ElasticsearchVectorStoreTest`。
+- 已执行 `mvn test`，结果通过：32 个测试，0 failure，0 error。
 
 ## Iteration 8 - 高级检索实验
 

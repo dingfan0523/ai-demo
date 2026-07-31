@@ -82,7 +82,7 @@ public class DefaultRetrievalService implements RetrievalService {
         //先把向量搜索结果转换成候选 hit，并按 chunkId 放入候选池，后续会继续补关键词分和重排分
         Map<String, RagChunkHit> candidates = new LinkedHashMap<>();
         for (VectorSearchResult result : vectorResults) {
-            RagChunkHit hit = toHit(result.getChunkId(), result.getScore(), request.isIncludeContent());
+            RagChunkHit hit = toHit(result, request.isIncludeContent());
             candidates.put(hit.getChunkId(), hit);
         }
         //再查询所有的检索块，将满足的检索块也放入候选map,然后对所有候选的检索块进行打分及Token相关信息的记录
@@ -130,8 +130,24 @@ public class DefaultRetrievalService implements RetrievalService {
     }
 
     private RagChunkHit toHit(String chunkId, double vectorScore, boolean includeContent) {
-        KnowledgeChunk chunk = chunkRepository.findById(chunkId)
+        return chunkRepository.findById(chunkId)
+                .map(chunk -> toHitFromRepository(chunk, vectorScore, includeContent))
                 .orElseThrow(() -> new IllegalStateException("索引指向了不存在的 chunk: " + chunkId));
+    }
+
+    /**
+     * 把向量召回结果转换为候选 hit。
+     *
+     * <p>正常情况下从内存 chunk/document 仓储回填完整信息；如果后续启用 ES 持久化向量存储，
+     * 应用重启后内存仓储可能为空，此时允许从 {@link VectorSearchResult} 中的持久化元数据兜底组装。</p>
+     */
+    private RagChunkHit toHit(VectorSearchResult result, boolean includeContent) {
+        return chunkRepository.findById(result.getChunkId())
+                .map(chunk -> toHitFromRepository(chunk, result.getScore(), includeContent))
+                .orElseGet(() -> toHitFromVectorResult(result, includeContent));
+    }
+
+    private RagChunkHit toHitFromRepository(KnowledgeChunk chunk, double vectorScore, boolean includeContent) {
         KnowledgeDocument document = documentRepository.findById(chunk.getDocumentId())
                 .orElseThrow(() -> new IllegalStateException("chunk 指向了不存在的文档: " + chunk.getDocumentId()));
 
@@ -160,6 +176,36 @@ public class DefaultRetrievalService implements RetrievalService {
         hit.setContentPreview(preview(chunk.getContent()));
         if (includeContent) {
             hit.setContent(chunk.getContent());
+        }
+        return hit;
+    }
+
+    private RagChunkHit toHitFromVectorResult(VectorSearchResult result, boolean includeContent) {
+        RagSource source = new RagSource();
+        source.setDocumentId(result.getDocumentId());
+        source.setChunkId(result.getChunkId());
+        source.setTitle(result.getTitle());
+        source.setSourceUri(result.getSourceUri());
+        source.setSectionTitle(result.getSectionTitle());
+        source.setStartLine(result.getStartLine());
+        source.setEndLine(result.getEndLine());
+        source.setPageStart(result.getPageStart());
+        source.setPageEnd(result.getPageEnd());
+        source.setScore(result.getScore());
+
+        RagChunkHit hit = new RagChunkHit();
+        hit.setDocumentId(result.getDocumentId());
+        hit.setChunkId(result.getChunkId());
+        hit.setTitle(result.getTitle());
+        hit.setScore(result.getScore());
+        hit.setVectorScore(result.getScore());
+        hit.setKeywordScore(0.0d);
+        hit.setRerankScore(result.getScore());
+        hit.setSource(source);
+        hit.setMetadata(new LinkedHashMap<>(result.getMetadata()));
+        hit.setContentPreview(result.getContentPreview() == null ? preview(result.getContent()) : result.getContentPreview());
+        if (includeContent) {
+            hit.setContent(result.getContent());
         }
         return hit;
     }

@@ -1,6 +1,7 @@
 package com.aidemo.rag.vector;
 
 import com.aidemo.rag.model.ChunkEmbedding;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -13,9 +14,10 @@ import java.util.Map;
  * 内存版向量存储。
  *
  * <p>用于学习阶段跑通向量检索链路。它不会持久化数据，应用重启后索引会丢失。
- * 后续 Iteration 7 会用同一个 `VectorStore` 契约替换为 pgvector 等持久化实现。</p>
+ * 后续可以用同一个 `VectorStore` 契约切换为 Elasticsearch 等持久化实现。</p>
  */
 @Component
+@ConditionalOnProperty(prefix = "rag.vector-store", name = "type", havingValue = "memory", matchIfMissing = true)
 public class InMemoryVectorStore implements VectorStore {
 
     private final Map<String, ChunkEmbedding> embeddings = new LinkedHashMap<>();

@@ -95,7 +95,8 @@ public class DefaultRagIngestService implements RagIngestService {
         response.setChunkCount(chunkCount);
         response.getSteps().add(step("chunk_documents", "success", "生成 chunk " + chunkCount + " 个", startedAt));
         response.getSteps().add(step("embed_chunks", "success", "已使用 " + embeddingService.modelName() + " 生成本地向量", startedAt));
-        response.getSteps().add(step("persist_in_memory", "success", "文档、chunk 和向量已保存到内存仓储", startedAt));
+        response.getSteps().add(step("persist_store", "success",
+                "文档、chunk 已保存到内存仓储，向量已保存到 " + ragProperties.getVectorStore().getType(), startedAt));
         return response;
     }
 
@@ -187,7 +188,7 @@ public class DefaultRagIngestService implements RagIngestService {
      * 为 chunk 生成 embedding 记录。
      *
      * <p>这里把 sourceUri 和 tags 放入向量 metadata，便于本地 VectorStore 做基础过滤。
-     * 后续接 pgvector 时，这些字段也会成为 metadata filter 的候选字段。</p>
+     * 后续接 Elasticsearch 等持久化存储时，这些字段也会成为 metadata filter 的候选字段。</p>
      */
     private List<ChunkEmbedding> toEmbeddings(KnowledgeDocument document, List<KnowledgeChunk> chunks, String indexVersion) {
         List<EmbeddingVector> vectors = embeddingService.embedAll(chunks.stream()
@@ -207,7 +208,17 @@ public class DefaultRagIngestService implements RagIngestService {
             embedding.setVector(vector.getValues());
             embedding.setIndexVersion(indexVersion);
             embedding.setCreatedAt(chunk.getCreatedAt());
+            embedding.getMetadata().put("content", chunk.getContent());
+            embedding.getMetadata().put("contentPreview", chunk.getContent().length() > 160
+                    ? chunk.getContent().substring(0, 160) + "..."
+                    : chunk.getContent());
+            embedding.getMetadata().put("title", document.getTitle());
             embedding.getMetadata().put("sourceUri", document.getSourceUri());
+            embedding.getMetadata().put("sectionTitle", chunk.getSectionTitle());
+            embedding.getMetadata().put("startLine", chunk.getStartLine());
+            embedding.getMetadata().put("endLine", chunk.getEndLine());
+            embedding.getMetadata().put("pageStart", chunk.getPageStart());
+            embedding.getMetadata().put("pageEnd", chunk.getPageEnd());
             embedding.getMetadata().put("tags", document.getTags());
             embeddings.add(embedding);
         }

@@ -7,7 +7,7 @@ import java.util.List;
 /**
  * 向量存储接口。
  *
- * <p>用于隔离本地向量存储、pgvector、Milvus 等实现。RAG 服务只依赖该接口，
+ * <p>用于隔离本地向量存储、Elasticsearch、pgvector 等实现。RAG 服务只依赖该接口，
  * 不直接依赖某个具体向量数据库 SDK。</p>
  */
 public interface VectorStore {

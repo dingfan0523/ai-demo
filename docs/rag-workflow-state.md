@@ -2,18 +2,17 @@
 
 ## 当前状态
 
-- 当前阶段：Iteration 7 - 持久化向量存储
+- 当前阶段：Iteration 8 - 高级检索实验
 - 阶段状态：TODO
 - 最近更新：2026-07-30
 - 工作原则：先完成可编译、可追踪、可继续的 RAG 模块边界，不直接进入 Markdown 入库或向量数据库实现；后续 RAG 开发遵循 `docs/rag-development-guidelines.md`，中文注释和中文提示优先。
 
 ## 本轮目标
 
-- Iteration 7：持久化向量存储。
-- 在保持模块契约不变的前提下，把本地内存存储替换或扩展为更真实的后端存储。
-- 推荐优先考虑 PostgreSQL + pgvector。
-- 增加 document/chunk/embedding 持久化和 index version/rebuild 能力。
-- 查询时继续支持 metadata filter。
+- Iteration 8：高级检索实验。
+- 在 baseline 可评测后，尝试更成熟的 RAG 优化能力。
+- 候选实验包括 LLM query rewrite、multi-query expansion、术语同义词词典、模型化 rerank、parent-child retrieval。
+- 每个实验都应有 eval 前后对比结果。
 - 保持现有 `/api/chat` 行为不变。
 
 ## 已完成
@@ -76,25 +75,34 @@
 - 已新增 `docs/rag-eval-guide.md`，说明评测用例格式和接口用法。
 - 已补充评测服务测试，覆盖指标统计、JSON 用例加载和报告落盘。
 - 已执行 `mvn test`，结果通过：31 个测试，0 failure，0 error。
+- 已完成 Iteration 7：Elasticsearch 7.17 兼容持久化向量存储。
+- 已新增 `rag.vector-store.type` 配置，默认继续使用 `memory`，显式配置 `elasticsearch` 时启用 ES 实现。
+- 已新增 `ElasticsearchVectorStore`，使用 JDK `HttpClient` 调用 ES REST API。
+- 已支持自动创建 ES index mapping，向量字段使用 `dense_vector`。
+- 已支持 bulk 写入 chunk embedding，并保存正文、标题、来源、页码、tags、indexVersion 等兜底字段。
+- 已支持 `script_score + cosineSimilarity` 精确向量检索，并将 ES 分数转回 `0-1` 区间。
+- 已支持 tags 过滤和按 documentId 删除向量文档。
+- 已调整检索服务：内存 chunk 仓储缺失时，可以使用 ES 返回的持久化字段组装 search/query 上下文。
+- 已新增 `docs/rag-elasticsearch-vector-store.md`，记录配置示例、当前取舍和本地检查命令。
+- 已补充 `ElasticsearchVectorStoreTest`，使用本地 HTTP server 模拟 ES REST API。
+- 已执行 `mvn test`，结果通过：32 个测试，0 failure，0 error。
 
 ## 正在进行
 
-- 等待进入 Iteration 7。
+- 等待进入 Iteration 8。
 
 ## 待完成
 
-- Iteration 7：持久化向量存储。
-- 设计 PostgreSQL + pgvector 的最小表结构。
-- 增加 document/chunk/embedding 持久化仓储实现。
-- 支持 index version 和 rebuild。
-- 查询时支持 metadata filter。
-- 增加本地启动和迁移说明。
-- 保持现有内存实现可用，便于学习阶段对比。
+- Iteration 8：高级检索实验。
+- 基于现有 eval 先建立一组 baseline 评测结果。
+- 选择一个高级检索实验作为第一轮，例如术语同义词词典或 query rewrite。
+- 每个实验都要可配置关闭。
+- 每个实验都要记录 eval 前后对比。
 
 ## 本轮暂不做
 
 - 不接 Milvus/Qdrant 等独立向量平台。
-- 不接模型化 rerank。
+- 不直接上复杂 GraphRAG。
 - 不把持久化方案扩展成分布式索引任务。
 - 不修改 `src/main/resources/application.yml` 中已有本地配置。
 
@@ -113,5 +121,5 @@
 
 - 命令：`mvn test`
 - 结果：BUILD SUCCESS
-- 测试统计：31 tests, 0 failures, 0 errors, 0 skipped
-- 时间：2026-07-30 09:02 Asia/Shanghai
+- 测试统计：32 tests, 0 failures, 0 errors, 0 skipped
+- 时间：2026-07-30 09:26 Asia/Shanghai
